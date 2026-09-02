@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: bank-marketing-api
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: bank-marketing-api
+
+  template:
+    metadata:
+      labels:
+        app: bank-marketing-api
+
+    spec:
+      containers:
+        - name: bank-marketing-api
+          image: ghcr.io/peppescavo/bank-marketing-mlops:latest
+          ports:
+            - containerPort: 8000
