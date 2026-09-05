@@ -47,4 +47,4 @@ jobs:
         run: sudo k3s kubectl rollout restart deployment/bank-marketing-api
 
       - name: Wait for deployment
-        run: sudo k3s kubectl rollout status deployment/bank-marketing-api --timeout=300s
+        run: sudo k3s kubectl rollout status deployment/bank-marketing-api --timeout=600s
