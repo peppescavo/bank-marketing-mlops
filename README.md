@@ -1,29 +1,55 @@
 # Bank Marketing MLOps
 
-End-to-end machine learning deployment project using the UCI Bank Marketing dataset.
+End-to-end machine learning deployment project based on the UCI Bank Marketing dataset.
 
-The project trains an XGBoost classification model, exposes it through a FastAPI REST API, packages it as a multi-architecture Docker image, builds and publishes the image automatically with GitHub Actions, and deploys it on a Raspberry Pi running k3s Kubernetes.
+The project trains an XGBoost classification model, exposes it through a FastAPI REST API, packages it as a Docker image, automatically builds multi-architecture images with GitHub Actions, stores them in GitHub Container Registry, and deploys the application to a Raspberry Pi running k3s Kubernetes.
 
-## Quick reference
+The main objective is to demonstrate a complete ML deployment workflow rather than only model development in a notebook.
 
-### GitHub repository
+---
 
+# Quick Reference
+
+## GitHub Repository
+
+```text
 https://github.com/peppescavo/bank-marketing-mlops
+```
 
-### Docker image
+Repository:
+
+```text
+peppescavo/bank-marketing-mlops
+```
+
+Default branch:
+
+```text
+master
+```
+
+---
+
+## Docker Image
+
+GitHub Container Registry:
 
 ```text
 ghcr.io/peppescavo/bank-marketing-mlops:latest
 ```
 
-The image supports:
+Supported architectures:
 
 ```text
 linux/amd64
 linux/arm64
 ```
 
-### Raspberry Pi
+This allows the same image to run both on standard x86 machines and on the ARM64 Raspberry Pi.
+
+---
+
+## Raspberry Pi
 
 Hostname:
 
@@ -37,32 +63,42 @@ Current LAN IP:
 192.168.178.29
 ```
 
-SSH:
+SSH using hostname:
 
 ```bash
 ssh peppe@raspberrypi.local
 ```
 
-or:
+SSH using IP:
 
 ```bash
 ssh peppe@192.168.178.29
 ```
 
-Note: the IP address can change if the router assigns a different DHCP address.
+Check Raspberry IP:
 
-### Deployed API
+```bash
+hostname -I
+```
+
+Important: the IP address may change if the router assigns a different address through DHCP.
+
+The k3s configuration currently explicitly uses:
+
+```text
+192.168.178.29
+```
+
+For a permanent setup, reserving this IP in the router DHCP configuration is recommended.
+
+---
+
+# Deployed API
 
 Base address:
 
 ```text
 http://192.168.178.29:30080
-```
-
-Health endpoint:
-
-```text
-http://192.168.178.29:30080/health
 ```
 
 Swagger UI:
@@ -71,10 +107,10 @@ Swagger UI:
 http://192.168.178.29:30080/docs
 ```
 
-OpenAPI specification:
+Health endpoint:
 
 ```text
-http://192.168.178.29:30080/openapi.json
+http://192.168.178.29:30080/health
 ```
 
 Prediction endpoint:
@@ -83,105 +119,98 @@ Prediction endpoint:
 POST http://192.168.178.29:30080/predict
 ```
 
-The root endpoint `/` is not defined, so opening:
+OpenAPI specification:
+
+```text
+http://192.168.178.29:30080/openapi.json
+```
+
+The root endpoint is not implemented:
 
 ```text
 http://192.168.178.29:30080/
 ```
 
-returns `404 Not Found`. This is expected.
-
-### Kubernetes manifests
-
-Deployment:
+Therefore a response such as:
 
 ```text
-https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/deployment.yaml
+404 Not Found
 ```
 
-Service:
+is expected.
 
-```text
-https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/service.yaml
-```
+---
 
-Apply them directly on the Raspberry Pi:
-
-```bash
-sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/deployment.yaml
-
-sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/service.yaml
-```
-
-## Goal
+# Goal
 
 Predict whether a bank customer will subscribe to a term deposit using information available before the end of the marketing call.
 
-The main objective is not model optimization, but demonstrating an end-to-end machine learning deployment workflow.
-
-## Architecture
+The project focuses on the engineering path from model development to a running inference service:
 
 ```text
-UCI Bank Marketing Dataset
-          |
-          v
-    scikit-learn Pipeline
-          |
-          v
-       XGBoost
-          |
-          v
-     model.joblib
-          |
-          v
-       FastAPI
-          |
-          v
-        Docker
-          |
-          v
-   GitHub Actions
-          |
-          v
-GitHub Container Registry
-          |
-          v
- Raspberry Pi + k3s
-          |
-          v
- Kubernetes Deployment
-          |
-          v
-       NodePort
-          |
-          v
-      REST API
+data
+→ preprocessing
+→ model
+→ API
+→ Docker
+→ container registry
+→ Kubernetes
+→ automated deployment
 ```
 
-## Dataset
+---
+
+# Dataset
 
 The project uses the UCI Bank Marketing dataset.
 
 Target:
 
-- `1`: customer subscribes to a term deposit
-- `0`: customer does not subscribe
+```text
+1 = customer subscribes to a term deposit
+0 = customer does not subscribe
+```
 
-The `duration` feature is excluded because call duration is only known after the call and would therefore introduce information leakage for a pre-call prediction use case.
+The `duration` variable is deliberately excluded.
 
-## Model
+Call duration is only known after the marketing call has taken place. Using it for a model intended to make predictions before the call would introduce future information and therefore data leakage.
+
+Categorical values such as:
+
+```text
+unknown
+```
+
+are kept as explicit categories.
+
+---
+
+# Machine Learning Pipeline
 
 The model is an XGBoost classifier.
 
-Preprocessing and prediction are stored together in a scikit-learn `Pipeline` containing:
+Preprocessing and prediction are stored together in a scikit-learn `Pipeline`.
+
+The preprocessing stage contains:
 
 - `OneHotEncoder` for categorical variables
 - `StandardScaler` for numerical variables
+
+The prediction stage contains:
+
 - `XGBClassifier`
 
-This allows the API to receive raw customer data without duplicating preprocessing logic.
+This means the API can receive raw customer features and the same preprocessing used during training is automatically applied during inference.
 
-## Model performance
+The trained pipeline is serialized as:
+
+```text
+models/model.joblib
+```
+
+---
+
+# Model Performance
 
 Current test-set metrics:
 
@@ -196,11 +225,84 @@ Current test-set metrics:
 
 Because the target is imbalanced, ROC AUC and PR AUC are more informative than accuracy alone.
 
-## API
+Metrics are stored in:
 
-The trained pipeline is exposed through FastAPI.
+```text
+metrics/final_metrics.json
+```
 
-Endpoints:
+---
+
+# Architecture
+
+```text
+                  UCI Bank Marketing Dataset
+                             |
+                             v
+                       src/train.py
+                             |
+                             v
+                 scikit-learn Pipeline
+                             |
+                  +----------+----------+
+                  |                     |
+                  v                     v
+          preprocessing             XGBoost
+                  |                     |
+                  +----------+----------+
+                             |
+                             v
+                      model.joblib
+                             |
+                             v
+                         FastAPI
+                             |
+                             v
+                          Docker
+                             |
+                             v
+                    GitHub Actions
+                             |
+                             v
+                 Multi-architecture build
+                  amd64             arm64
+                             |
+                             v
+              GitHub Container Registry
+                             |
+                             v
+           ghcr.io/peppescavo/bank-marketing-mlops
+                             |
+                             v
+                 Self-hosted GitHub Runner
+                     on Raspberry Pi
+                             |
+                             v
+                           k3s
+                             |
+                             v
+                 Kubernetes Deployment
+                             |
+                             v
+                            Pod
+                             |
+                             v
+                    Kubernetes Service
+                             |
+                             v
+                    NodePort :30080
+                             |
+                             v
+                        FastAPI API
+```
+
+---
+
+# FastAPI
+
+The trained model is exposed using FastAPI.
+
+Available endpoints:
 
 ```text
 GET  /health
@@ -209,10 +311,16 @@ GET  /docs
 GET  /openapi.json
 ```
 
-Run locally without Docker:
+Run the API locally:
 
 ```bash
 uvicorn src.api:app --reload
+```
+
+Local base address:
+
+```text
+http://127.0.0.1:8000
 ```
 
 Local Swagger UI:
@@ -227,15 +335,17 @@ Local health endpoint:
 http://127.0.0.1:8000/health
 ```
 
-## Docker
+---
 
-Build locally:
+# Docker
+
+Build the Docker image locally:
 
 ```bash
 docker build -t bank-marketing-api .
 ```
 
-Run:
+Run it:
 
 ```bash
 docker run -p 8000:8000 bank-marketing-api
@@ -247,42 +357,216 @@ Then open:
 http://localhost:8000/docs
 ```
 
-## Continuous Integration
+Health check:
 
-Every push to the `master` branch triggers GitHub Actions.
-
-The workflow:
-
-```text
-git push
-   |
-   v
-GitHub Actions
-   |
-   +--> checkout repository
-   |
-   +--> configure QEMU
-   |
-   +--> configure Docker Buildx
-   |
-   +--> build AMD64 + ARM64 images
-   |
-   +--> push image to GHCR
+```bash
+curl http://localhost:8000/health
 ```
 
-Docker image:
+---
+
+# GitHub Container Registry
+
+Production image:
 
 ```text
 ghcr.io/peppescavo/bank-marketing-mlops:latest
 ```
 
-The multi-architecture build allows the same image to run both on standard x86 cloud/server machines and on the ARM64 Raspberry Pi.
+The image is automatically built by GitHub Actions.
 
-## Kubernetes deployment
+The workflow creates images for:
 
-The Raspberry Pi runs k3s, a lightweight Kubernetes distribution.
+```text
+linux/amd64
+linux/arm64
+```
 
-Check cluster:
+The ARM64 image is used by the Raspberry Pi.
+
+---
+
+# CI/CD
+
+Every push to:
+
+```text
+master
+```
+
+starts the GitHub Actions pipeline.
+
+The complete pipeline is:
+
+```text
+git push
+    |
+    v
+GitHub Actions
+GitHub-hosted runner
+    |
+    v
+Checkout repository
+    |
+    v
+Set up QEMU
+    |
+    v
+Set up Docker Buildx
+    |
+    v
+Build Docker image
+    |
+    +-------------------+
+    |                   |
+    v                   v
+linux/amd64         linux/arm64
+    |                   |
+    +---------+---------+
+              |
+              v
+       Push image to GHCR
+              |
+              v
+     Build job completes
+              |
+              v
+      Deploy job starts
+              |
+              v
+GitHub self-hosted runner
+      on Raspberry Pi
+              |
+              v
+kubectl rollout restart
+              |
+              v
+k3s creates a new Pod
+              |
+              v
+Pod pulls :latest from GHCR
+              |
+              v
+New FastAPI version running
+```
+
+The build is executed on a GitHub-hosted runner.
+
+The deployment is executed on the Raspberry Pi using a GitHub Actions self-hosted runner.
+
+---
+
+# GitHub Actions Self-Hosted Runner
+
+The Raspberry Pi is registered as a GitHub Actions runner.
+
+Runner labels:
+
+```text
+self-hosted
+Linux
+ARM64
+```
+
+Runner directory:
+
+```text
+~/actions-runner
+```
+
+The runner is installed as a system service so it continues running after SSH logout and automatically starts after a Raspberry Pi reboot.
+
+Check runner status:
+
+```bash
+cd ~/actions-runner
+sudo ./svc.sh status
+```
+
+Start runner:
+
+```bash
+cd ~/actions-runner
+sudo ./svc.sh start
+```
+
+Stop runner:
+
+```bash
+cd ~/actions-runner
+sudo ./svc.sh stop
+```
+
+Restart runner:
+
+```bash
+cd ~/actions-runner
+sudo ./svc.sh stop
+sudo ./svc.sh start
+```
+
+For manual foreground execution:
+
+```bash
+cd ~/actions-runner
+./run.sh
+```
+
+Note: `./run.sh` only keeps the runner active while that terminal session is running. The system service should normally be used instead.
+
+---
+
+# Automated Kubernetes Deployment
+
+After the Docker build succeeds, GitHub assigns the deployment job to the Raspberry Pi runner.
+
+The deployment runs:
+
+```bash
+sudo k3s kubectl rollout restart deployment/bank-marketing-api
+```
+
+Then waits for the new deployment to become available:
+
+```bash
+sudo k3s kubectl rollout status deployment/bank-marketing-api --timeout=300s
+```
+
+Because the Kubernetes Deployment uses:
+
+```text
+ghcr.io/peppescavo/bank-marketing-mlops:latest
+```
+
+the newly created Pod pulls the current `latest` image.
+
+The result is:
+
+```text
+edit code
+→ git commit
+→ git push
+→ build
+→ publish image
+→ deploy
+→ new version running on Raspberry Pi
+```
+
+No manual SSH deployment is required during the normal workflow.
+
+---
+
+# Kubernetes
+
+The Raspberry Pi runs:
+
+```text
+k3s
+```
+
+k3s is a lightweight Kubernetes distribution suitable for small machines and edge devices.
+
+Check Kubernetes node:
 
 ```bash
 sudo k3s kubectl get nodes
@@ -294,7 +578,7 @@ Expected state:
 raspberrypi   Ready
 ```
 
-Check deployment:
+Check deployments:
 
 ```bash
 sudo k3s kubectl get deployments
@@ -306,73 +590,219 @@ Check pods:
 sudo k3s kubectl get pods
 ```
 
-Expected state:
+Expected application Pod state:
 
 ```text
 1/1   Running
 ```
 
-Check service:
+Check services:
+
+```bash
+sudo k3s kubectl get services
+```
+
+Check the application service:
 
 ```bash
 sudo k3s kubectl get svc bank-marketing-api
 ```
 
-The API is exposed using a Kubernetes `NodePort`:
+---
+
+# Kubernetes Deployment
+
+Manifest:
+
+```text
+k8s/deployment.yaml
+```
+
+Remote raw file:
+
+```text
+https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/deployment.yaml
+```
+
+The Deployment runs one replica of:
+
+```text
+ghcr.io/peppescavo/bank-marketing-mlops:latest
+```
+
+Application container port:
+
+```text
+8000
+```
+
+Apply manually if necessary:
+
+```bash
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/deployment.yaml
+```
+
+---
+
+# Kubernetes Service
+
+Manifest:
+
+```text
+k8s/service.yaml
+```
+
+Remote raw file:
+
+```text
+https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/service.yaml
+```
+
+Service type:
+
+```text
+NodePort
+```
+
+Service port:
+
+```text
+80
+```
+
+Container target port:
+
+```text
+8000
+```
+
+NodePort:
 
 ```text
 30080
 ```
 
-Therefore the API is reachable on the local network at:
+Therefore:
+
+```text
+Raspberry Pi IP : NodePort
+192.168.178.29 : 30080
+```
+
+produces:
 
 ```text
 http://192.168.178.29:30080
 ```
 
-## Useful Kubernetes commands
+Apply manually if necessary:
 
 ```bash
-# Node status
-sudo k3s kubectl get nodes
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/service.yaml
+```
 
-# Pods
+---
+
+# First Manual Kubernetes Deployment
+
+If the Kubernetes objects do not exist yet:
+
+```bash
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/deployment.yaml
+
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/peppescavo/bank-marketing-mlops/master/k8s/service.yaml
+```
+
+Then verify:
+
+```bash
 sudo k3s kubectl get pods
-
-# Deployments
-sudo k3s kubectl get deployments
-
-# Services
 sudo k3s kubectl get services
+```
 
-# Detailed pod information
+After the initial deployment, normal application updates are handled automatically through GitHub Actions.
+
+---
+
+# Useful Kubernetes Commands
+
+Node status:
+
+```bash
+sudo k3s kubectl get nodes
+```
+
+Pods:
+
+```bash
+sudo k3s kubectl get pods
+```
+
+More pod information:
+
+```bash
+sudo k3s kubectl get pods -o wide
+```
+
+Deployments:
+
+```bash
+sudo k3s kubectl get deployments
+```
+
+Services:
+
+```bash
+sudo k3s kubectl get services
+```
+
+Application service:
+
+```bash
+sudo k3s kubectl get svc bank-marketing-api
+```
+
+Detailed Pod information:
+
+```bash
 sudo k3s kubectl describe pod -l app=bank-marketing-api
+```
 
-# Recent Kubernetes events
-sudo k3s kubectl get events --sort-by=.lastTimestamp
+Application logs:
 
-# Application logs
+```bash
 sudo k3s kubectl logs -l app=bank-marketing-api
-
-# Restart deployment
-sudo k3s kubectl rollout restart deployment bank-marketing-api
 ```
 
-## k3s configuration
+Follow application logs:
 
-The Raspberry Pi uses Wi-Fi interface:
-
-```text
-wlan0
+```bash
+sudo k3s kubectl logs -f -l app=bank-marketing-api
 ```
 
-Current node IP:
+Kubernetes events:
 
-```text
-192.168.178.29
+```bash
+sudo k3s kubectl get events --sort-by=.lastTimestamp
 ```
 
-k3s configuration file:
+Restart application manually:
+
+```bash
+sudo k3s kubectl rollout restart deployment/bank-marketing-api
+```
+
+Wait for deployment:
+
+```bash
+sudo k3s kubectl rollout status deployment/bank-marketing-api --timeout=300s
+```
+
+---
+
+# k3s Configuration
+
+Configuration file:
 
 ```text
 /etc/rancher/k3s/config.yaml
@@ -386,7 +816,25 @@ flannel-iface: wlan0
 disable-network-policy: true
 ```
 
-Check k3s:
+Network interface used by Kubernetes:
+
+```text
+wlan0
+```
+
+Current node IP:
+
+```text
+192.168.178.29
+```
+
+`disable-network-policy: true` is currently used as a workaround for the networking issue encountered on this Raspberry Pi setup.
+
+---
+
+# k3s Administration
+
+Check service:
 
 ```bash
 sudo systemctl status k3s
@@ -398,86 +846,369 @@ Restart k3s:
 sudo systemctl restart k3s
 ```
 
-View k3s logs:
+Stop k3s:
+
+```bash
+sudo systemctl stop k3s
+```
+
+Start k3s:
+
+```bash
+sudo systemctl start k3s
+```
+
+Recent logs:
 
 ```bash
 sudo journalctl -u k3s -n 100 --no-pager
 ```
 
-## Project structure
+Follow logs:
+
+```bash
+sudo journalctl -u k3s -f
+```
+
+---
+
+# Network Information
+
+Show interfaces:
+
+```bash
+ip -br addr
+```
+
+Current primary interface:
+
+```text
+wlan0
+```
+
+Current Raspberry Pi address:
+
+```text
+192.168.178.29
+```
+
+Test Raspberry connectivity:
+
+```bash
+ping 192.168.178.29
+```
+
+Test the API:
+
+```bash
+curl http://192.168.178.29:30080/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+---
+
+# Project Structure
 
 ```text
 bank-marketing-mlops/
 ├── .github/
 │   └── workflows/
 │       └── docker-build.yml
+│
 ├── data/
+│
 ├── k8s/
 │   ├── deployment.yaml
 │   └── service.yaml
+│
 ├── metrics/
 │   └── final_metrics.json
+│
 ├── models/
 │   └── model.joblib
+│
 ├── notebooks/
+│
 ├── src/
 │   ├── api.py
 │   ├── predict.py
 │   └── train.py
+│
+├── .dockerignore
+├── .gitignore
 ├── Dockerfile
-├── requirements.txt
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
-## End-to-end workflow
+---
 
-Training:
+# Training Workflow
 
 ```text
-dataset
-→ train.py
-→ preprocessing
-→ XGBoost
-→ model.joblib
+bank-additional-full.csv
+        |
+        v
+    load_data()
+        |
+        v
+   split_data()
+        |
+        v
+  build_pipeline()
+        |
+        v
+ categorical preprocessing
+ numerical preprocessing
+        |
+        v
+      XGBoost
+        |
+        v
+   model.joblib
+        |
+        v
+ final_metrics.json
 ```
 
-Deployment:
+Run training:
+
+```bash
+python src/train.py
+```
+
+---
+
+# Inference Workflow
 
 ```text
+Client
+  |
+  v
+POST /predict
+  |
+  v
+FastAPI
+  |
+  v
+Pydantic validation
+  |
+  v
+pandas DataFrame
+  |
+  v
+scikit-learn Pipeline
+  |
+  +--> OneHotEncoder
+  |
+  +--> StandardScaler
+  |
+  +--> XGBoost
+  |
+  v
+Prediction + probability
+```
+
+---
+
+# Development Workflow
+
+Normal development process:
+
+```bash
+git status
+git add .
+git commit -m "Describe the change"
 git push
-→ GitHub Actions
-→ multi-architecture Docker build
-→ GitHub Container Registry
-→ k3s
-→ Kubernetes Pod
-→ FastAPI
 ```
 
-## Current status
+After:
 
-Working:
+```bash
+git push
+```
 
-- model training
-- preprocessing pipeline
+GitHub Actions automatically performs the remaining deployment steps.
+
+```text
+push
+→ build
+→ GHCR
+→ Raspberry runner
+→ Kubernetes rollout
+→ updated API
+```
+
+---
+
+# Troubleshooting
+
+## API not reachable
+
+Check Pod:
+
+```bash
+sudo k3s kubectl get pods
+```
+
+Check service:
+
+```bash
+sudo k3s kubectl get svc bank-marketing-api
+```
+
+Test:
+
+```bash
+curl http://192.168.178.29:30080/health
+```
+
+---
+
+## Pod stuck in ContainerCreating
+
+```bash
+sudo k3s kubectl describe pod -l app=bank-marketing-api
+```
+
+Then:
+
+```bash
+sudo k3s kubectl get events --sort-by=.lastTimestamp
+```
+
+---
+
+## Pod crashes
+
+```bash
+sudo k3s kubectl logs -l app=bank-marketing-api
+```
+
+---
+
+## k3s not working
+
+```bash
+sudo systemctl status k3s
+```
+
+Then:
+
+```bash
+sudo journalctl -u k3s -n 100 --no-pager
+```
+
+---
+
+## GitHub deployment does not start
+
+Check the self-hosted runner:
+
+```bash
+cd ~/actions-runner
+sudo ./svc.sh status
+```
+
+Check that the runner appears online in:
+
+```text
+GitHub repository
+→ Settings
+→ Actions
+→ Runners
+```
+
+Runner labels must match the workflow:
+
+```text
+self-hosted
+Linux
+ARM64
+```
+
+---
+
+# Current Status
+
+Implemented:
+
+- UCI Bank Marketing dataset
+- data preprocessing
+- leakage-aware feature selection
+- XGBoost classification model
+- scikit-learn preprocessing pipeline
 - model serialization
-- FastAPI inference service
-- Swagger documentation
-- Docker containerization
-- AMD64 and ARM64 Docker images
-- GitHub Actions CI
+- evaluation metrics
+- FastAPI REST API
+- Pydantic request validation
+- Swagger UI
+- Docker container
+- multi-architecture Docker build
+- `linux/amd64` support
+- `linux/arm64` support
+- GitHub Actions
 - GitHub Container Registry
-- Raspberry Pi k3s cluster
+- Raspberry Pi deployment
+- k3s Kubernetes cluster
 - Kubernetes Deployment
 - Kubernetes NodePort Service
-- API accessible from the local network
+- local network API access
+- GitHub Actions self-hosted ARM64 runner
+- automatic Kubernetes rollout after successful image build
 
-## Possible next steps
+---
 
-- automatic deployment to k3s after a successful GitHub Actions build
-- automated API tests
-- health/readiness probes in Kubernetes
-- resource requests and limits
+# Possible Future Improvements
+
+Possible extensions:
+
+- automated unit and API tests
+- Kubernetes liveness probe
+- Kubernetes readiness probe
+- CPU and memory requests
+- CPU and memory limits
 - model monitoring
-- MLflow model tracking
-- deployment to a managed cloud Kubernetes service such as Azure Kubernetes Service
-- Terraform infrastructure as code
+- prediction monitoring
+- MLflow experiment tracking
+- model versioning
+- structured application logging
+- Prometheus metrics
+- Grafana dashboard
+- Kubernetes Ingress
+- HTTPS
+- domain name
+- GitOps using Argo CD or Flux
+- Terraform
+- deployment to Azure Kubernetes Service or another managed Kubernetes platform
+
+---
+
+# Summary
+
+This project demonstrates the complete path from a machine learning experiment to a running production-style service:
+
+```text
+Machine Learning
+      +
+FastAPI
+      +
+Docker
+      +
+GitHub Actions
+      +
+Container Registry
+      +
+Kubernetes
+      +
+Raspberry Pi
+      +
+CI/CD
+```
+
+A source-code change pushed to GitHub can automatically become a new version of the machine learning API running inside Kubernetes on the Raspberry Pi.

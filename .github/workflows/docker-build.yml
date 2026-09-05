@@ -37,3 +37,14 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/${{ github.repository }}:latest
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, Linux, ARM64]
+
+    steps:
+      - name: Restart Kubernetes deployment
+        run: sudo k3s kubectl rollout restart deployment/bank-marketing-api
+
+      - name: Wait for deployment
+        run: sudo k3s kubectl rollout status deployment/bank-marketing-api --timeout=300s
